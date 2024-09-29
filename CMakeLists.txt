@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 find_package(MbedTLS CONFIG REQUIRED)
 find_package(Qt6 CONFIG REQUIRED COMPONENTS Core)
 find_package(spdlog CONFIG REQUIRED)
+find_package(minhook CONFIG REQUIRED)
 
 add_library(base STATIC
     xlog.h xlog.cpp
@@ -12,6 +13,13 @@ add_library(base STATIC
     daily_filechacha_sink.h
     windebug_sink.h
     qjson_helper.h
+    exceptiondump.h exceptiondump.cpp
+    stacktrace_win.h
 )
 
-target_link_libraries(base PUBLIC MbedTLS::mbedcrypto Qt6::Core spdlog::spdlog_header_only)
+target_link_libraries(base PUBLIC
+    MbedTLS::mbedcrypto
+    Qt6::Core
+    spdlog::spdlog_header_only
+    minhook::minhook
+)

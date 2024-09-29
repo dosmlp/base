@@ -1,6 +1,6 @@
 #include "exceptiondump.h"
 #include <QDateTime>
-#include <QMessageBox>
+// #include <QMessageBox>
 #include <QDir>
 #include <DbgHelp.h>
 #include <debugapi.h>
@@ -8,9 +8,8 @@
 #include <tchar.h>
 #include <QStandardPaths>
 extern "C" {
-#include "minhook/MinHook.h"
+#include "MinHook.h"
 }
-
 #include <chrono>
 
 ExceptionDump* ExceptionDump::self_ = nullptr;
@@ -36,7 +35,7 @@ typedef DWORD64 (WINAPI *SYMGETMODULEBASE64)(HANDLE process, DWORD64 addr);
 typedef BOOL (WINAPI *SYMFROMADDR)(HANDLE process, DWORD64 address,
         PDWORD64 displacement, PSYMBOL_INFOW symbol);
 typedef BOOL (WINAPI *SYMGETMODULEINFO64)(HANDLE process, DWORD64 addr,
-        PIMAGEHLP_MODULE64 module_info);
+        PIMAGEHLP_MODULEW64 module_info);
 
 typedef DWORD64 (WINAPI *SYMLOADMODULE64)(HANDLE process, HANDLE file,
         PSTR image_name, PSTR module_name, DWORD64 base_of_dll,
@@ -129,7 +128,7 @@ static bool GetDbghelpImports(struct ExceptionHandlerData *data)
     data->sym_function_table_access64= (SYMFUNCTIONTABLEACCESS64)GetProc(data->dbghelp,"SymFunctionTableAccess64");
     data->sym_get_module_base64= (SYMGETMODULEBASE64)GetProc(data->dbghelp,"SymGetModuleBase64");
     data->sym_from_addr= (SYMFROMADDR)GetProc(data->dbghelp,"SymFromAddrW");
-    data->sym_get_module_info64= (SYMGETMODULEINFO64)GetProc(data->dbghelp,"SymGetModuleInfo64");
+    data->sym_get_module_info64= (SYMGETMODULEINFO64)GetProc(data->dbghelp,"SymGetModuleInfoW64");
     data->sym_refresh_module_list= (SYMREFRESHMODULELIST)GetProc(data->dbghelp,"SymRefreshModuleList");
     data->stack_walk64= (STACKWALK64)GetProc(data->dbghelp,"StackWalk64");
     data->enumerate_loaded_modules64= (ENUMERATELOADEDMODULES64)GetProc(data->dbghelp,"EnumerateLoadedModulesW64");
@@ -185,9 +184,8 @@ static void InitSymInfo(ExceptionHandlerData *data)
             SYMOPT_UNDNAME |
             SYMOPT_FAIL_CRITICAL_ERRORS |
             SYMOPT_LOAD_ANYTHING);
-
-    const std::wstring appPath = QCoreApplication::applicationDirPath().toStdWString();
-    data->sym_initialize(data->process, appPath.c_str(), TRUE);
+    //符号初始化
+    BOOL ret = data->sym_initialize(data->process, NULL, TRUE);
 //    if (!sym_initialize_called)
 //        data->sym_initialize(data->process, NULL, true);
 //    else
@@ -255,34 +253,36 @@ static void WriteHeader(ExceptionHandlerData *data)
     strftime(date_time, sizeof(date_time), "%Y-%m-%d, %X", &ts);
 
 
-        data->str += "Unhandled exception: ";
-        data->str += QString::number(data->exception->ExceptionRecord->ExceptionCode,16);
-        data->str += "\n";
-        data->str += "Date/Time: ";
-        data->str += QString(date_time);
-        data->str += "\n";
-        data->str += "Fault address: ";
-        data->str += QString::number(data->main_trace.instruction_ptr,16);
-        data->str += "\n";
-        data->str += "CPU: ";
-        data->str += data->cpu_info;
-        data->str += "\n";
+    data->str += "Unhandled exception: ";
+    data->str += QString::number(data->exception->ExceptionRecord->ExceptionCode,16);
+    data->str += "\n";
+    data->str += "Date/Time: ";
+    data->str += QString(date_time);
+    data->str += "\n";
+    data->str += "Fault address: ";
+    data->str += QString::number(data->main_trace.instruction_ptr,16);
+    data->str += "\n";
+    data->str += "CPU: ";
+    data->str += data->cpu_info;
+    data->str += "\n";
 
-//        dstr_catf(&data->str, "Unhandled exception: %x\r\n"
-//                        "Date/Time: %s\r\n"
-//                        "Fault address: %"PRIX64" (%s)\r\n"
-//                        "libobs version: "OBS_VERSION"\r\n"
-//                        "Windows version: %d.%d build %d (revision: %d; "
-//                                "%s-bit)\r\n"
-//                        "CPU: %s\r\n\r\n",
-//                        data->exception->ExceptionRecord->ExceptionCode,
-//                        date_time,
-//                        data->main_trace.instruction_ptr,
-//                        data->module_name.array,
-//                        is_64_bit_windows() ? "64" : "32",
-//                        data->cpu_info.array);
+    IMAGEHLP_LINEW64 lineInfo = { 0 };
+    lineInfo.SizeOfStruct = sizeof(IMAGEHLP_LINEW64);
+    DWORD displacement = 0;
+    BOOL ret = data->sym_get_line_from_addr(data->process,data->main_trace.instruction_ptr-1,&displacement,&lineInfo);
+    if (ret) {
+        data->str += "Exception Source File:";
+
+        QString fileName = QString::fromUtf16((const char16_t*)lineInfo.FileName);
+        int slashPos = fileName.lastIndexOf('\\');
+        if(slashPos != -1)
+            fileName = fileName.mid(slashPos + 1);
+
+        data->str += fileName + ":" +QString::number(lineInfo.LineNumber);
+    }
+
 }
-static BOOL CALLBACK enum_module(PCTSTR module_name, DWORD64 module_base,
+static BOOL CALLBACK EnumModuleCallBack(PCTSTR module_name, DWORD64 module_base,
         ULONG module_size, struct ModuleInfo *info)
 {
     if (info->addr >= module_base &&
@@ -296,45 +296,54 @@ static BOOL CALLBACK enum_module(PCTSTR module_name, DWORD64 module_base,
     return true;
 }
 
-static inline void get_module_name(ExceptionHandlerData *data, ModuleInfo *info)
+static inline void GetModuleName(ExceptionHandlerData *data, ModuleInfo *info)
 {
     data->enumerate_loaded_modules64(data->process,
-            (PENUMLOADED_MODULES_CALLBACK64)enum_module, info);
+            (PENUMLOADED_MODULES_CALLBACK64)EnumModuleCallBack, info);
 }
 static inline bool WalkStack(ExceptionHandlerData *data,
-        HANDLE thread, StackTrace *trace)
+                             HANDLE thread, StackTrace *trace)
 {
-    ModuleInfo module_info = {0};
+    // ModuleInfo module_info = {0};
     DWORD64 func_offset;
     char sym_name[256];
-    char *p;
-
+    // char *p;
     bool success = data->stack_walk64(trace->image_type,
-            data->process, thread, &trace->frame, &trace->context,
-            NULL, data->sym_function_table_access64,
-            data->sym_get_module_base64, NULL);
+                                      data->process,
+                                      thread,
+                                      &trace->frame,
+                                      &trace->context,
+                                      NULL, data->sym_function_table_access64,
+                                      data->sym_get_module_base64, NULL);
     if (!success)
         return false;
+    // module_info.addr = trace->frame.AddrPC.Offset;
+    // GetModuleName(data, &module_info);
 
-    module_info.addr = trace->frame.AddrPC.Offset;
-    get_module_name(data, &module_info);
+    IMAGEHLP_MODULEW64 mod;
+    mod.SizeOfStruct = sizeof(IMAGEHLP_MODULEW64);
+    data->sym_get_module_info64(data->process, trace->frame.AddrPC.Offset, &mod);
+    QString fileName = QString::fromUtf16((const char16_t*)mod.ImageName);
+    int slashPos = fileName.lastIndexOf('\\');
+    if(slashPos != -1)
+        fileName = fileName.mid(slashPos + 1);
 
-    if (!!module_info.name_utf8[0]) {
-        p = strrchr(module_info.name_utf8, '\\');
-        p = p ? (p + 1) : module_info.name_utf8;
-    } else {
-        strcpy(module_info.name_utf8, "<unknown>");
-        p = module_info.name_utf8;
-    }
+    // if (!!module_info.name_utf8[0]) {
+    //     p = strrchr(module_info.name_utf8, '\\');
+    //     p = p ? (p + 1) : module_info.name_utf8;
+    // } else {
+    //     strcpy(module_info.name_utf8, "<unknown>");
+    //     p = module_info.name_utf8;
+    // }
 
     success = !!data->sym_from_addr(data->process,
-            trace->frame.AddrPC.Offset, &func_offset,
-            data->sym_info);
+                                    trace->frame.AddrPC.Offset, &func_offset,
+                                    data->sym_info);
 
     DWORD displacement = 0;
     IMAGEHLP_LINEW64 lineInfo = { 0 };
     lineInfo.SizeOfStruct = sizeof(IMAGEHLP_LINEW64);
-    BOOL ret = data->sym_get_line_from_addr(data->process,trace->frame.AddrPC.Offset,&displacement,&lineInfo);
+    BOOL ret = data->sym_get_line_from_addr(data->process,trace->frame.AddrPC.Offset-1,&displacement,&lineInfo);
     if (ret) {
         data->str += QString::fromWCharArray((wchar_t*)lineInfo.FileName) +":"+QString::number(lineInfo.LineNumber)+"\n";
     } else {
@@ -346,7 +355,7 @@ static inline bool WalkStack(ExceptionHandlerData *data,
         os_wcs_to_utf8(data->sym_info->Name, 0, sym_name, 256);
 
     if (success && (data->sym_info->Flags & SYMFLAG_EXPORT) == 0) {
-        data->str += QString(p)+"!"+QString(sym_name)+"!0x"+QString::number(func_offset,16)+"\n";
+        data->str += fileName+"!"+QString(sym_name)+"!0x"+QString::number(func_offset,16)+"\n";
     } else {
         data->str += "EIP:0x"+QString::number(trace->frame.AddrPC.Offset,16)+"\n";
     }
@@ -382,7 +391,7 @@ static void WriteThreadTrace(ExceptionHandlerData *data,
     data->str += "\n=================Thread "+QString::number(entry->th32ThreadID)+(crash_thread?" (Crashed)\n":"\n");
 
     ptrace = crash_thread ? &data->main_trace : &trace;
-
+    //遍历堆栈
     while (WalkStack(data, thread, ptrace));
 
     CloseHandle(thread);
@@ -403,7 +412,7 @@ static void WriteThreadTraces(ExceptionHandlerData *data)
     entry.dwSize = sizeof(entry);
     success = !!Thread32First(snapshot, &entry);
     while (success) {
-        //找到发生异常的线程？
+        //找到发生异常的线程
         WriteThreadTrace(data, &entry, true);
         success = !!Thread32Next(snapshot, &entry);
     }
@@ -419,6 +428,7 @@ static void WriteThreadTraces(ExceptionHandlerData *data)
 static void HandleException(ExceptionHandlerData *data,
         PEXCEPTION_POINTERS exception)
 {
+    //获取在dbghelp中要用到的函数地址
     if (!GetDbghelpImports(data)) {
         return;
     }
@@ -427,11 +437,15 @@ static void HandleException(ExceptionHandlerData *data,
     data->main_trace.context = *exception->ContextRecord;
     GetSystemTime(&data->time_info);
 
+    //加载符号
     InitSymInfo(data);
+    //获取cpu信息
     InitCpuInfo(data);
+    //获取寄存器信息
     InitInstructionData(&data->main_trace);
-
+    //写入头部信息，异常code，时间，cpu....
     WriteHeader(data);
+    //枚举线程(异常线程)信息
     WriteThreadTraces(data);
 
     QFile log(data->file_name+".log");
@@ -519,21 +533,27 @@ long ExceptionDump::ExceptionProcess(PEXCEPTION_POINTERS ExceptionInfo)
                                  nullptr);
         CloseHandle(hFile);
      }
-    if (self_->callback_func_) self_->callback_func_();
+    if (self_->callback_func_) {
+        self_->callback_func_(userdata_);
+    }
     return EXCEPTION_EXECUTE_HANDLER;//表示已经处理了异常
 }
 
-ExceptionDump::ExceptionDump(const QString& path, std::function<void ()> func):path_(path),callback_func_(func)
+void* ExceptionDump::userdata_ = nullptr;
+ExceptionDump::ExceptionDump(const QString& path, std::function<void (void*)> func, void *userdata):
+    path_(path),
+    callback_func_(func)
 {
     SetUnhandledExceptionFilter(&ExceptionDump::ExceptionProcess);
     DisableSetUnhandledExceptionFilter();
 }
 
-void ExceptionDump::Init(const QString &path, std::function<void ()> func)
+void ExceptionDump::Init(const QString &path, std::function<void (void *)> func, void* userdata)
 {
     if (self_) return;
     if (!QDir(path).exists()) {
         QDir().mkpath(path);
     }
-    self_ = new ExceptionDump(path,func);
+    self_ = new ExceptionDump(path,func,userdata);
+    userdata_ = userdata;
 }

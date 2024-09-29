@@ -20,16 +20,16 @@
 
 #pragma once
 
-#include <windows.h>
-#include <dbghelp.h>
+#include <Windows.h>
+#include <DbgHelp.h>
+#include <debugapi.h>
+#include <TlHelp32.h>
+#include <tchar.h>
 #include <stdio.h>
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QTextStream>
-#ifdef __MINGW32__
-#include <cxxabi.h>
-#endif
 
 namespace straceWin
 {
@@ -38,30 +38,10 @@ namespace straceWin
     BOOL CALLBACK EnumModulesCB(LPCSTR, DWORD64, PVOID);
     const QString getBacktrace();
     struct EnumModulesContext;
-    // Also works for MinGW64
-#ifdef __MINGW32__
-    void demangle(QString& str);
-#endif
 
     QString getSourcePathAndLineNumber(HANDLE hProcess, DWORD64 addr);
     bool makeRelativePath(const QString& dir, QString& file);
 }
-
-#ifdef __MINGW32__
-void straceWin::demangle(QString& str)
-{
-    char const* inStr = qPrintable("_" + str); // Really need that underline or demangling will fail
-    int status = 0;
-    size_t outSz = 0;
-    char* demangled_name = abi::__cxa_demangle(inStr, 0, &outSz, &status);
-    if (status == 0)
-    {
-        str = QString::fromLocal8Bit(demangled_name);
-        if (outSz > 0)
-            free(demangled_name);
-    }
-}
-#endif
 
 void straceWin::loadHelpStackFrame(IMAGEHLP_STACK_FRAME& ihsf, const STACKFRAME64& stackFrame)
 {
@@ -197,16 +177,6 @@ const QString straceWin::getBacktrace()
     Context.ContextFlags = CONTEXT_CONTROL;
 
 
-#ifdef __MINGW32__
-    asm ("Label:\n\t"
-         "movl %%ebp,%0;\n\t"
-         "movl %%esp,%1;\n\t"
-         "movl $Label,%%eax;\n\t"
-         "movl %%eax,%2;\n\t"
-         : "=r" (Context.Ebp),"=r" (Context.Esp),"=r" (Context.Eip)
-         : //no input
-         : "eax");
-#else
     _asm
     {
         Label:
@@ -215,7 +185,7 @@ const QString straceWin::getBacktrace()
         mov eax, [Label];
         mov [Context.Eip], eax;
     }
-#endif
+
 #else
     RtlCaptureContext(&Context);
 #endif
@@ -255,7 +225,7 @@ const QString straceWin::getBacktrace()
     QTextStream logStream(&log);
     logStream << "```\n";
 
-    const std::wstring appPath = QCoreApplication::applicationDirPath().toStdWString();
+    const std::wstring appPath = _T("D:\\3rd\\git_repo\\my_projects\\driver2socks\\d2s-cli\\build\\Desktop_Qt_6_7_2_MSVC2019_64bit-Debug");//QCoreApplication::applicationDirPath().toStdWString();
     HANDLE hProcess = GetCurrentProcess();
     HANDLE hThread = GetCurrentThread();
     SymInitializeW(hProcess, appPath.c_str(), TRUE);
@@ -299,9 +269,6 @@ const QString straceWin::getBacktrace()
             if(SymFromAddr(hProcess, ihsf.InstructionOffset, &dwDisplacement, pSymbol))
             {
                 funcName = QString(pSymbol->Name);
-#ifdef __MINGW32__
-                demangle(funcName);
-#endif
 
                 // now ihsf.InstructionOffset points to the instruction that follows CALL instruction
                 // decrease the query address by one byte to point somewhere in the CALL instruction byte sequence
@@ -312,29 +279,21 @@ const QString straceWin::getBacktrace()
                 funcName = QString::fromLatin1("0x%1").arg(ihsf.InstructionOffset, 8, 16, QLatin1Char('0'));
             }
             SymSetContext(hProcess, &ihsf, NULL);
-#ifndef __MINGW32__
             QStringList params;
             SymEnumSymbols(hProcess, 0, NULL, EnumSymbolsCB, (PVOID)&params);
-#endif
 
             QString insOffset = QString::fromLatin1("0x%1").arg(ihsf.InstructionOffset, 16, 16, QLatin1Char('0'));
             QString formatLine = "#%1 %2 %3 %4";
-#ifndef __MINGW32__
             formatLine += "(%5)";
-#endif
             QString debugLine = formatLine
                                 .arg(i, 3, 10)
                                 .arg(fileName, -20)
                                 .arg(insOffset, -11)
                                 .arg(funcName)
-#ifndef __MINGW32__
                                 .arg(params.join(", "));
 
             if (!sourceFile.isEmpty())
                 debugLine += QString::fromLatin1("[ %1 ]").arg(sourceFile);
-#else
-                                ;
-#endif
             logStream << debugLine << '\n';
             i++;
         }
@@ -344,9 +303,9 @@ const QString straceWin::getBacktrace()
         }
     }
 
-    //logStream << "\n\nList of linked Modules:\n";
-    //EnumModulesContext modulesContext(hProcess, logStream);
-    //SymEnumerateModules64(hProcess, EnumModulesCB, (PVOID)&modulesContext);
+    logStream << "\n\nList of linked Modules:\n";
+    EnumModulesContext modulesContext(hProcess, logStream);
+    SymEnumerateModules64(hProcess, EnumModulesCB, (PVOID)&modulesContext);
     SymCleanup(hProcess);
 
     logStream << "```";
