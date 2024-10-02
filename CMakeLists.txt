@@ -15,6 +15,7 @@ add_library(base STATIC
     qjson_helper.h
     exceptiondump.h exceptiondump.cpp
     stacktrace_win.h
+    qt_threadpool.h
 )
 
 target_link_libraries(base PUBLIC
