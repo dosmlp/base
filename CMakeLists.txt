@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.5.0)
-project(base VERSION 0.1.0 LANGUAGES CXX)
+project(base VERSION 0.1.0 LANGUAGES C CXX)
 set(CMAKE_CXX_STANDARD 20)
 
 find_package(MbedTLS CONFIG REQUIRED)
@@ -16,11 +16,12 @@ add_library(base STATIC
     exceptiondump.h exceptiondump.cpp
     stacktrace_win.h
     qt_threadpool.h
+    mbedtls.h
     boringssl/target.h boringssl/curve25519.h
     boringssl/crypto/curve25519/curve25519.c boringssl/crypto/curve25519/curve25519_64_adx.c
     boringssl/crypto/curve25519/curve25519_tables.h boringssl/crypto/curve25519/internal.h boringssl/crypto/internal.h
 )
-
+target_include_directories(base PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(base PUBLIC
     MbedTLS::mbedcrypto
     Qt6::Core

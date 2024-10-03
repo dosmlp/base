@@ -22,6 +22,7 @@
 #include <assert.h>
 #include <string.h>
 #include <mbedtls/sha256.h>
+#include "mbedtls.h"
 
 #include "internal.h"
 // #include "../internal.h"
@@ -156,7 +157,7 @@ static void fe_frombytes_strict(fe *h, const uint8_t s[32]) {
 
 static void fe_frombytes(fe *h, const uint8_t s[32]) {
   uint8_t s_copy[32];
-  OPENSSL_memcpy(s_copy, s, 32);
+  memcpy(s_copy, s, 32);
   s_copy[31] &= 0x7f;
   fe_frombytes_strict(h, s_copy);
 }
@@ -168,21 +169,21 @@ static void fe_tobytes(uint8_t s[32], const fe *f) {
 
 // h = 0
 static void fe_0(fe *h) {
-  OPENSSL_memset(h, 0, sizeof(fe));
+  memset(h, 0, sizeof(fe));
 }
 
 static void fe_loose_0(fe_loose *h) {
-  OPENSSL_memset(h, 0, sizeof(fe_loose));
+  memset(h, 0, sizeof(fe_loose));
 }
 
 // h = 1
 static void fe_1(fe *h) {
-  OPENSSL_memset(h, 0, sizeof(fe));
+  memset(h, 0, sizeof(fe));
   h->v[0] = 1;
 }
 
 static void fe_loose_1(fe_loose *h) {
-  OPENSSL_memset(h, 0, sizeof(fe_loose));
+  memset(h, 0, sizeof(fe_loose));
   h->v[0] = 1;
 }
 
@@ -304,12 +305,12 @@ static void fe_cmov(fe_loose *f, const fe_loose *g, fe_limb_t b) {
 
 // h = f
 static void fe_copy(fe *h, const fe *f) {
-  OPENSSL_memmove(h, f, sizeof(fe));
+  memmove(h, f, sizeof(fe));
 }
 
 static void fe_copy_lt(fe_loose *h, const fe *f) {
   static_assert(sizeof(fe_loose) == sizeof(fe), "fe and fe_loose mismatch");
-  OPENSSL_memmove(h, f, sizeof(fe));
+  memmove(h, f, sizeof(fe));
 }
 
 static void fe_loose_invert(fe *out, const fe_loose *z) {
@@ -385,7 +386,7 @@ static int fe_isnonzero(const fe_loose *f) {
   fe_tobytes(s, &tight);
 
   static const uint8_t zero[32] = {0};
-  return CRYPTO_memcmp(s, zero, sizeof(zero)) != 0;
+  return memcmp(s, zero, sizeof(zero)) != 0;
 }
 
 // return 1 if f is in {1,3,5,...,q-2}
@@ -1865,7 +1866,8 @@ static void sc_muladd(uint8_t *s, const uint8_t *a, const uint8_t *b,
 
 void ED25519_keypair(uint8_t out_public_key[32], uint8_t out_private_key[64]) {
   uint8_t seed[32];
-  RAND_bytes(seed, 32);
+  rand_bytes(seed,32);
+  // RAND_bytes(seed, 32);
   ED25519_keypair_from_seed(out_public_key, out_private_key, seed);
 }
 
@@ -1908,7 +1910,7 @@ int ED25519_sign(uint8_t out_sig[64], const uint8_t *message,
   sc_muladd(out_sig + 32, hram, az, nonce);
 
   // The signature is computed from the private key, but is public.
-  CONSTTIME_DECLASSIFY(out_sig, 64);
+  // CONSTTIME_DECLASSIFY(out_sig, 64);
   return 1;
 }
 
@@ -1927,11 +1929,11 @@ int ED25519_verify(const uint8_t *message, size_t message_len,
   fe_carry(&A.T, &t);
 
   uint8_t pkcopy[32];
-  OPENSSL_memcpy(pkcopy, public_key, 32);
+  memcpy(pkcopy, public_key, 32);
   uint8_t rcopy[32];
-  OPENSSL_memcpy(rcopy, signature, 32);
+  memcpy(rcopy, signature, 32);
   uint8_t scopy[32];
-  OPENSSL_memcpy(scopy, signature + 32, 32);
+  memcpy(scopy, signature + 32, 32);
 
   // https://tools.ietf.org/html/rfc8032#section-5.1.7 requires that s be in
   // the range [0, order) in order to prevent signature malleability.
@@ -1971,7 +1973,7 @@ int ED25519_verify(const uint8_t *message, size_t message_len,
   uint8_t rcheck[32];
   x25519_ge_tobytes(rcheck, &R);
 
-  return CRYPTO_memcmp(rcheck, rcopy, sizeof(rcheck)) == 0;
+  return memcmp(rcheck, rcopy, sizeof(rcheck)) == 0;
 }
 
 void ED25519_keypair_from_seed(uint8_t out_public_key[32],
@@ -1988,10 +1990,10 @@ void ED25519_keypair_from_seed(uint8_t out_public_key[32],
   x25519_ge_scalarmult_base(&A, az);
   ge_p3_tobytes(out_public_key, &A);
   // The public key is derived from the private key, but it is public.
-  CONSTTIME_DECLASSIFY(out_public_key, 32);
+  // CONSTTIME_DECLASSIFY(out_public_key, 32);
 
-  OPENSSL_memcpy(out_private_key, seed, 32);
-  OPENSSL_memcpy(out_private_key + 32, out_public_key, 32);
+  memcpy(out_private_key, seed, 32);
+  memcpy(out_private_key + 32, out_public_key, 32);
 }
 
 
@@ -2002,7 +2004,7 @@ static void x25519_scalar_mult_generic(uint8_t out[32],
   fe_loose x2l, z2l, x3l, tmp0l, tmp1l;
 
   uint8_t e[32];
-  OPENSSL_memcpy(e, scalar, 32);
+  memcpy(e, scalar, 32);
   e[0] &= 248;
   e[31] &= 127;
   e[31] |= 64;
@@ -2096,8 +2098,8 @@ static void x25519_scalar_mult(uint8_t out[32], const uint8_t scalar[32],
 }
 
 void X25519_keypair(uint8_t out_public_value[32], uint8_t out_private_key[32]) {
-  RAND_bytes(out_private_key, 32);
-
+  // RAND_bytes(out_private_key, 32);
+  rand_bytes(out_private_key,32);
   // All X25519 implementations should decode scalars correctly (see
   // https://tools.ietf.org/html/rfc7748#section-5). However, if an
   // implementation doesn't then it might interoperate with random keys a
@@ -2137,7 +2139,7 @@ void X25519_public_from_private(uint8_t out_public_value[32],
 #endif
 
   uint8_t e[32];
-  OPENSSL_memcpy(e, private_key, 32);
+  memcpy(e, private_key, 32);
   e[0] &= 248;
   e[31] &= 127;
   e[31] |= 64;
@@ -2154,5 +2156,5 @@ void X25519_public_from_private(uint8_t out_public_value[32],
   fe_loose_invert(&zminusy_inv, &zminusy);
   fe_mul_tlt(&zminusy_inv, &zplusy, &zminusy_inv);
   fe_tobytes(out_public_value, &zminusy_inv);
-  CONSTTIME_DECLASSIFY(out_public_value, 32);
+  // CONSTTIME_DECLASSIFY(out_public_value, 32);
 }

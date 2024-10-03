@@ -16,7 +16,7 @@
 #define OPENSSL_HEADER_CURVE25519_H
 
 #include <stdint.h>
-
+#include <memory.h>
 
 // me
 #include "target.h"
@@ -47,7 +47,11 @@ void x25519_ge_scalarmult_base_adx(uint8_t h[4][32], const uint8_t a[32]);
 void x25519_NEON(uint8_t out[32], const uint8_t scalar[32],
                  const uint8_t point[32]);
 #endif
-
+static inline uint64_t CRYPTO_load_u64_le(const void *in) {
+    uint64_t v;
+    memcpy(&v, in, sizeof(v));
+    return v;
+}
 //end me
 #if defined(__cplusplus)
 extern "C" {
