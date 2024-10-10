@@ -21,7 +21,7 @@ add_library(base STATIC
     boringssl/crypto/curve25519/curve25519.c boringssl/crypto/curve25519/curve25519_64_adx.c
     boringssl/crypto/curve25519/curve25519_tables.h boringssl/crypto/curve25519/internal.h boringssl/crypto/internal.h
 )
-target_include_directories(base PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(base PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(base PUBLIC
     MbedTLS::mbedcrypto
     Qt6::Core

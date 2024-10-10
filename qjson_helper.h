@@ -6,6 +6,7 @@
 #include <QJsonValue>
 #include <QJsonArray>
 #include <QList>
+#include <memory>
 namespace QJsonHelper {
 template<class T>
 void fromJson(const QJsonValue &j, QList<T> &p)
@@ -20,11 +21,35 @@ void fromJson(const QJsonValue &j, QList<T> &p)
     }
 }
 template<class T>
+void fromJson(const QJsonValue &j, QList<std::shared_ptr<T>> &p)
+{
+    if (j.isArray()) {
+        QJsonArray arr = j.toArray();
+        p.resize(arr.size());
+        for (int i = 0;i < arr.size();++i) {
+            const QJsonValue& v = arr.at(i);
+            if (!p.at(i)) {
+                p[i] = std::make_shared<T>();
+            }
+            p[i]->fromJson(v);
+        }
+    }
+}
+template<class T>
 QJsonValue toJson(const QList<T> &p)
 {
     QJsonArray arr;
     for (const T& t:p) {
         arr.append(t.toJson());
+    }
+    return arr;
+}
+template<class T>
+QJsonValue toJson(const QList<std::shared_ptr<T>> &p)
+{
+    QJsonArray arr;
+    for (const std::shared_ptr<T>& t:p) {
+        arr.append(t->toJson());
     }
     return arr;
 }

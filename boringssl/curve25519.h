@@ -138,8 +138,6 @@ void ED25519_keypair_from_seed(uint8_t out_public_key[32],
 
 #if defined(__cplusplus)
 }  // extern C
-
-
 #endif
 
 #endif  // OPENSSL_HEADER_CURVE25519_H

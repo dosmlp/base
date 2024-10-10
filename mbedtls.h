@@ -1,4 +1,5 @@
-#pragma once
+#ifndef MBEDTLS_H
+#define MBEDTLS_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -7,12 +8,12 @@ extern "C" {
 #include <mbedtls/ecdh.h>
 #include <mbedtls/entropy.h>
 #include <mbedtls/ctr_drbg.h>
+mbedtls_ctr_drbg_context drbg;
 #ifdef __cplusplus
 }
 #endif
 
 
-static mbedtls_ctr_drbg_context drbg;
 
 int init_mbedtls()
 {
@@ -33,3 +34,4 @@ void rand_bytes(uint8_t* out, size_t out_len)
     mbedtls_ctr_drbg_random(&drbg, out, out_len);
 }
 
+#endif
