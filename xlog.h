@@ -5,19 +5,19 @@
 #include <QString>
 #include <spdlog/spdlog.h>
 
-// namespace fmt {
-// template <> struct formatter<QString> {
-//     char presentation = 'q';
-//     constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) {
-//       return ctx.begin();
-//     }
-//     template <typename FormatContext>
-//     auto format(const QString& p, FormatContext& ctx) const -> decltype(ctx.out()) {
-//         return fmt::format_to(ctx.out(), "{}", p.toUtf8().toStdString());
-//     }
-// };
+namespace fmt {
+template <> struct formatter<QString> {
+    char presentation = 'q';
+    constexpr auto parse(format_parse_context& ctx) -> decltype(ctx.begin()) {
+      return ctx.begin();
+    }
+    template <typename FormatContext>
+    auto format(const QString& p, FormatContext& ctx) const -> decltype(ctx.out()) {
+        return fmt::format_to(ctx.out(), "{}", p.toUtf8().toStdString());
+    }
+};
 
-// }
+}
 
 class XLogMgr
 {
