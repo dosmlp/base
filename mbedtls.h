@@ -15,7 +15,7 @@ mbedtls_ctr_drbg_context drbg;
 
 
 
-int init_mbedtls()
+inline int init_mbedtls()
 {
     mbedtls_entropy_context entropy;
 	
@@ -29,7 +29,7 @@ int init_mbedtls()
     return 0;
 }
 
-void rand_bytes(uint8_t* out, size_t out_len)
+inline void rand_bytes(uint8_t* out, size_t out_len)
 {
     mbedtls_ctr_drbg_random(&drbg, out, out_len);
 }

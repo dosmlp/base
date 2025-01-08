@@ -4,6 +4,7 @@
 #include <string>
 #include <QString>
 #include <spdlog/spdlog.h>
+#include <spdlog/fmt/bin_to_hex.h>
 
 namespace fmt {
 template <> struct formatter<QString> {
